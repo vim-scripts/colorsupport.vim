@@ -1,0 +1,102 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=2682
+
+colorsupport.vim
+================
+Use colorschemes written for gvim in color terminals.
+Tested with many colorschemes including color sampler pack (vimscript #625)
+
+For a 256-color terminal, see
+
+- http://www.frexx.de/xterm-256-notes/
+- http://www.nabble.com/screen%2C-256color-mode-and-ssh-td15098157.html
+- http://push.cx/2008/256-color-xterms-in-ubuntu
+
+And don't forget to rate ;^)
+
+Comparison
+----------
+At the time that I uploaded this script, I was unaware of other color conversion scripts.
+And I've tried them later.
+
+vimscript #2390. (Thank you marty)
+
+Key difference is that vimscript #2390 practically requires gvim installed.
+And major difficulty (and dirty tricks) of this script was to get gui 
+attributes from colorschemes, which are not obtainable from series of 
+synIDxxx() functions without +gui feature.  
+
+vimscript #1809
+
+vimscript #1809 tries to extract hilight information by string match.
+(I assume that this approach is what most conversion script have took)
+By contrast, colorsupport.vim actually run the original color scheme 
+with highlight command substituted with Highlight command.
+Later works better because many color schemes have highlights
+in conditional block, which should not be extracted.
+
+Furthermore, vimscript #1809 does not support color names.
+
+Simple usage
+------------
+- Drop 'colorsupport.vim' in '~/.vim/plugin'.
+
+  At next startup, colorscheme loaded by '.vimrc' will be reloaded with gui
+  colors mapped to terminal palette.  That is, if you already have gvim
+  colorscheme set in '~/.vimrc', then it'll work as soon as you install the
+  'colorsupport.vim' script.
+
+- Browse and preview colorschemes in your &runtimepath by
+  ':ColorSchemeBrowse'.  You can also manually try colorschemes using
+  ':ColorScheme', just like ':colorscheme'.
+
+- On slow systems, it can take long to convert colorscheme every time vim
+  starts up.  For faster start-up, save last colorscheme by ':ColorSchemeSave'.
+
+  By default, this saves last colorscheme loaded by ':ColorScheme' in the first 
+  &runtimepath (usually, ~/.vim/colors on Unix).
+
+  If last colorscheme is already from '~/.vim/colors', error will occur,  and
+  you should use ':ColorSchemeSave <new-colorscheme-name>' instead.
+
+Upgrade
+-------
+When upgrading colorsupport.vim, additional color groups can be set, 
+but color schemes saved by :ColorSchemeSave passes conversion by :ColorScheme.
+Delete old (converted and saved) color schemes if you want re-convert.
+
+Customization
+-------------
+- g:colorsupport_palette_name (one of "tango" (default), "console", "xterm", "rxvt")
+- g:colorsupport_palette (e.g., ['#000000',  ...]. (length better be =16))
+
+- g:colorsupport_cube_name (one of "xterm256", "xterm88", "konsole", "eterm")
+- g:colorsupport_cube (e.g. [0x00, 0x2A, 0x55, 0xAA, 0xD4])
+
+- g:colorsupport_grey (e.g., range(0x1C, 0xFF, 30))
+
+- g:colorsupport_rgbs (e.g., ['/usr/X11/share/X11'])
+
+Keep {len(g:colorsupport_palette) + len(g:colorsupport_cube)^3 + len(g:colorsupport_grey) == &t_Co}
+
+Commands
+--------
+- Highlight ... 
+
+  Arguments are the same as :highlight
+  Set 'cterm', 'ctermfg', 'ctermbg' based on 'gui', 'guifg', 'guibg',
+  respectively.  Note that given 'cterm.*' settings are ignored.
+
+- ColorScheme <path-or-name>
+
+  Load a colorscheme using ':Highlight', instead of ':highlight'.
+  Unlike colorscheme, path is accepted as well as colorscheme name.
+
+- ColorSchemeBrowse [<path>]
+
+  Browse colorschemes in <path> (or &runtimepath, if no arguments given)
+
+- ColorSchemeSave [<name>]
+
+  Save last colorscheme loaded by ':ColorScheme' (or, equivalently, browsed by
+  ':ColorSchemeViewer') in the first &runtimepath.  If <name> is not given,
+  original name of last colorscheme is used.
