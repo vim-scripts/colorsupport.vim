@@ -1,14 +1,44 @@
 " colorsupport.vim: Use color schemes written for gvim in color terminal
 "
-" Maintainer:       Lee Jihwan <moonz@kaist.ac.kr>
-" Version:          1.0
-" URL:              http://www.vim.org/script.php?script_id=...
+" Maintainer:       Lee JiHwan <moonz.net@gmail.com>
+" Version:          1.0.1
+" URL:              http://www.vim.org/script.php?script_id=2682
 
 if exists('g:loaded_colorsupport') || &cp
     finish
 endif
 let g:loaded_colorsupport = 1
 
+" utility {{{------------------------------------------------------------------
+" '#rrggbb' -> [0xrr00, 0xgg00, 0xbb00]
+function! s:rgb(rgb)
+    return map([1, 3, 5], '("0x" . strpart(a:rgb, v:val, 2)) * 0x100')
+endfunction
+
+" normalize color name
+function! s:color_name(name)
+    return tolower(substitute(a:name, '\s\+', '', 'g'))
+endfunction
+
+" '~/.vim/colors/<scheme-name>.vim' -> <scheme-name>
+function! s:scheme(path)
+    return fnamemodify(a:path, ':t:r')
+endfunction
+
+function! s:get_sid()
+    return matchstr(expand('<sfile>'), '<SNR>\zs\d\+\ze_get_sid$')
+endfunction
+let s:sid = s:get_sid()
+
+function! s:get_funcs(pat)
+    redir => l:funcs
+    silent execute 'function' '/' . a:pat
+    redir END
+    return map(split(l:funcs, "\n"), 'v:val[9:strridx(v:val, "(") - 1]')
+endfunction
+"}}}
+
+" presets {{{------------------------------------------------------------------
 " from gnome-terminal
 let s:palette_dict = {
 \   'tango':
@@ -49,18 +79,103 @@ let s:palette_dict = {
 \        [0x0000, 0xFFFF, 0xFFFF], [0xFFFF, 0xFFFF, 0xFFFF]]
 \ }
 
+let s:cube_dict = {
+\   'xterm256'  : insert(range(0x5F, 0xFF, 40), 0),
+\   'xterm88'   : insert(range(0x5F, 0xFF, 80), 0),
+\   'konsole'   : range(0x00, 0xFF, 0x33),
+\   'eterm'     : [0x00, 0x2A, 0x55, 0x7F, 0xAA, 0xD4],
+\   'none'      : []
+\ }
+
+let s:grey_dict = {
+\   'xterm256'  : range(0x08, 0xFF, 10)[:23],
+\   'xterm88'   : range(0x1C, 0xFF, 30),
+\   'none'      : []
+\ }
+
+let s:rgbs_dict = {
+\   'linux'     : ['/usr/share/X11', '/usr/lib/X11', $VIMRUNTIME],
+\   'macunix'   : ['/usr/X11/share/X11', $VIMRUNTIME]
+\ }
+"}}}
+
+" defaults {{{-----------------------------------------------------------------
+let s:palette_dflt = 'tango'
+
+if &t_Co == 256
+    if &term =~? 'konsole'
+        let s:cube_dflt = 'konsole'
+    elseif &term =~? '^eterm'
+        let s:cube_dflt = 'eterm'
+    else
+        let s:cube_dflt = 'xterm256'
+    endif
+    let s:grey_dflt = 'xterm256'
+elseif &t_Co == 88
+    let s:cube_dflt = 'xterm88'
+    let s:grey_dflt = 'xterm88'
+else
+    let s:cube_dflt = 'none'
+    let s:grey_dflt = 'none'
+endif
+
+if has('macunix')
+    let s:rgbs_dflt = 'macunix'
+else
+    let s:rgbs_dflt = 'linux'
+endif
+"}}}
+
+" customize {{{----------------------------------------------------------------
+let s:sfile = expand('<sfile>:t')
+function! s:customize()
+    for l:var in ['palette', 'cube', 'grey', 'rgbs']
+        let l:gvar = 'g:colorsupport_' . l:var
+        let l:gname = l:gvar . '_name'
+        let l:dict = 's:' . l:var . '_dict'
+        let l:dflt = 's:' . l:var . '_dflt'
+
+        if exists(l:gvar)
+            if type(eval(l:gvar)) != type([])
+                echohl ErrorMsg
+                echomsg printf('%s: invalid %s (list expected)',
+                \              s:sfile, l:gvar)
+                echohl None
+                return 1
+            endif
+            execute printf('let %s["custom"] = %s', l:dict, l:gvar)
+            execute printf('let %s = "custom"', l:gname)
+        endif
+
+        if !exists(l:gname)
+            execute printf('let %s = %s', l:gname, l:dflt)
+        endif
+
+        if empty(filter(keys(eval(l:dict)), 'v:val ==# ' . l:gname))
+            echohl ErrorMsg
+            echomsg printf('%s: unknown %s name "%s"',
+            \              s:sfile, l:var, eval(l:gname))
+            echohl None
+            return 1
+        endif
+    endfor
+    return 0
+endfunction
+
+if exists('g:colorsupport_palette') && type(g:colorsupport_palette) == type([])
+    call map(g:colorsupport_palette, 's:rgb(v:val)')
+endif
+
+if s:customize()
+    finish
+endif
+"}}}
+
+" set palette {{{--------------------------------------------------------------
 function! s:get_palette()
     let l:palette = s:palette_dict[g:colorsupport_palette_name]
-
-    if &t_Co == 256
-        let l:comp_vals = insert(range(0x5F, 0xFF, 40), 0)
-        let l:grey_vals = range(0x08, 0xFF, 10)[:23]
-    elseif &t_Co == 88
-        let l:comp_vals = insert(range(0x5F, 0xFF, 80), 0)
-        let l:grey_vals = range(0x1C, 0xFF, 30)
-    else
-        return l:palette
-    endif
+    let l:comp_vals = s:cube_dict[g:colorsupport_cube_name]
+    let l:grey_vals = s:grey_dict[g:colorsupport_grey_name]
 
     for l:r in l:comp_vals
         for l:g in l:comp_vals
@@ -77,45 +192,12 @@ function! s:get_palette()
     return l:palette
 endfunction
 
-function! ColorSupportSetPalette(palette_name)
-    if empty(filter(keys(s:palette_dict), 'v:val == a:palette_name'))
-        echohl ErrorMsg
-        echomsg 'Unknown palette name "' . a:palette_name . '"'
-        echohl None
-        return
-    endif
+let s:palette = s:get_palette()
+"}}}
 
-    let g:colorsupport_palette_name = a:palette_name
-    let s:palette = s:get_palette()
-endfunction
-
-function! s:rgb(rgb)
-    return map([1, 3, 5], '("0x" . strpart(a:rgb, v:val, 2)) * 0x100')
-endfunction
-
-if exists('g:colorsupport_palette')
-    if len(g:colorsupport_palette) != 16
-        echohl ErrorMsg
-        echomsg 'Invalid g:colorsupport_palette'
-        echohl None
-        finish
-    endif
-    let s:palette_dict['custom'] = map(g:colorsupport_palette, 's:rgb(v:val)')
-    let g:colorsupport_palette_name = 'custom'
-endif
-
-if !exists('g:colorsupport_palette_name')
-    let g:colorsupport_palette_name = 'tango'
-endif
-
-call ColorSupportSetPalette(g:colorsupport_palette_name)
-
-function! s:color_name(name)
-    return tolower(substitute(a:name, '\s\+', '', 'g'))
-endfunction
-
-function! ColorSupportLoadRGB(...)
-    for l:dir in a:000
+" load rgb {{{-----------------------------------------------------------------
+function! s:load_rgb()
+    for l:dir in s:rgbs_dict[g:colorsupport_rgbs_name]
         let l:file = l:dir . '/rgb.txt'
         if !filereadable(l:file)
             continue
@@ -131,9 +213,10 @@ function! ColorSupportLoadRGB(...)
 endfunction
 
 let s:color_map = {}
-call ColorSupportLoadRGB($VIMRUNTIME, '/usr/share/X11', '/usr/lib/X11',
-\                        '/usr/X11/share/X11')
+call s:load_rgb()
+"}}}
 
+" :Highlight {{{---------------------------------------------------------------
 function! s:distance(rgb1, rgb2)
     let l:dist = 0.0
     for l:i in range(0, 2)
@@ -175,7 +258,7 @@ function! s:highlight_do(cmd)
     execute a:cmd
     return
 
-    " deprecated (changing colors_name is easier)
+    " XXX: deprecated (changing colors_name is easier)
     let l:name = exists('g:colors_name') ? g:colors_name : ''
     execute a:cmd
     if l:name != '' && !exists('g:colors_name')
@@ -239,26 +322,12 @@ endfunction
 
 command! -nargs=* -complete=highlight
 \   Highlight :call s:highlight(<q-args>)
+"}}}
 
-function! s:scheme(file)
-    return substitute(substitute(a:file, "^.*/", "", ""), "\.vim$", "", "")
-endfunction
-
+" :ColorScheme {{{-------------------------------------------------------------
 function! ColorSchemeComplete(arg_lead, cmd_line, csr_pos)
     let l:glob = globpath(&runtimepath, 'colors/' . a:arg_lead . '*.vim')
     return map(split(l:glob, "\n"), 's:scheme(v:val)')
-endfunction
-
-function s:get_sid()
-    return matchstr(expand('<sfile>'), '<SNR>\zs\d\+\ze_get_sid$')
-endfunction
-let s:sid = s:get_sid()
-
-function! s:get_funcs(pat)
-    redir => l:funcs
-    silent execute 'function' '/' . a:pat
-    redir END
-    return map(split(l:funcs, "\n"), 'v:val[9:strridx(v:val, "(") - 1]')
 endfunction
 
 let s:last_run = ''
@@ -359,7 +428,9 @@ command! -nargs=1 -complete=customlist,ColorSchemeComplete
 if exists('g:colors_name')
     execute 'ColorScheme' g:colors_name
 endif
+"}}}
 
+" :ColorSchemeBrowse {{{-------------------------------------------------------
 function! s:colorscheme_browse(...)
     execute 'silent bot 10new ColorSchemeBrowse'
     setlocal bufhidden=wipe buftype=nofile nobuflisted
@@ -379,7 +450,9 @@ endfunction
 
 command! -nargs=? -complete=dir
 \   ColorSchemeBrowse :call s:colorscheme_browse(<f-args>)
+"}}}
 
+" :ColorSchemeSave {{{---------------------------------------------------------
 function! s:colorscheme_save(...)
     if s:colors_name == ''
         echohl ErrorMsg
@@ -414,6 +487,9 @@ function! s:colorscheme_save(...)
 endfunction
 
 command! -nargs=? ColorSchemeSave :call s:colorscheme_save(<f-args>)
+"}}}
+
+" for debugging and testing {{{------------------------------------------------
 command! -nargs=0 ColorSchemeDebug :echo s:last_run
 command! -nargs=0 ColorSchemePrint :echo join(s:last_cmds, "\n")
 
@@ -434,8 +510,10 @@ function! ColorSchemeTest()
     if l:name != ''
         if l:name[0] == '.'
             let l:name = l:name[1:]
+            execute 'ColorScheme' l:name
+        else
+            execute 'colorscheme' l:name
         endif
-        execute 'ColorScheme' l:name
     else
         hi clear
     endif
@@ -443,3 +521,6 @@ function! ColorSchemeTest()
         set more
     endif
 endfunction
+"}}}
+
+" vim: foldmethod=marker
