@@ -1,7 +1,7 @@
 " colorsupport.vim: Use color schemes written for gvim in color terminal
 "
 " Maintainer:       Lee JiHwan <moonz.net@gmail.com>
-" Version:          1.0.1
+" Version:          1.0.2
 " URL:              http://www.vim.org/script.php?script_id=2682
 
 if exists('g:loaded_colorsupport') || &cp
@@ -94,8 +94,12 @@ let s:grey_dict = {
 \ }
 
 let s:rgbs_dict = {
-\   'linux'     : ['/usr/share/X11', '/usr/lib/X11', $VIMRUNTIME],
-\   'macunix'   : ['/usr/X11/share/X11', $VIMRUNTIME]
+\   'unix'      : [
+\       '/usr/share/X11',
+\       '/usr/lib/X11',
+\       '/usr/X11/share/X11',
+\       $VIMRUNTIME
+\   ]
 \ }
 "}}}
 
@@ -119,11 +123,7 @@ else
     let s:grey_dflt = 'none'
 endif
 
-if has('macunix')
-    let s:rgbs_dflt = 'macunix'
-else
-    let s:rgbs_dflt = 'linux'
-endif
+let s:rgbs_dflt = 'unix'
 "}}}
 
 " customize {{{----------------------------------------------------------------
@@ -251,7 +251,7 @@ function! s:map_attrs(attrs)
         endif
         call add(l:new_attrs, l:attr)
     endfor
-    return join(l:new_attrs, ',')
+    return l:new_attrs
 endfunction
 
 function! s:highlight_do(cmd)
@@ -288,8 +288,10 @@ function! s:highlight(arg_str)
         return
     endif
 
-    let l:adds = []
-    let l:delay = 0
+    let l:attrs = []
+    let l:fg = -1
+    let l:bg = -1
+
     for l:arg in l:args
         if l:arg !~? '^gui.*='
             continue
@@ -297,12 +299,27 @@ function! s:highlight(arg_str)
 
         let [l:key, l:val] = split(l:arg, '=')
         if l:key ==? 'gui'
-            let l:attrs = s:map_attrs(l:val)
-            if l:attrs != ''
-                call add(l:adds, 'cterm=' . l:attrs)
-            endif
+            call extend(l:attrs, s:map_attrs(l:val))
         elseif l:key =~? '^gui[fb]g$'
-            call add(l:adds, 'cterm' . l:key[-2:] . '=' . s:map_color(l:val))
+            let l:{l:key[-2:]} = s:map_color(l:val)
+        elseif l:key ==? 'guisp'
+            let l:bg = s:map_color(l:val)
+        endif
+    endfor
+
+    if l:fg ==? 'bg' && l:bg ==? 'fg'
+        let l:fg = -1
+        let l:bg = -1
+        call add(l:attrs, 'reverse')
+    endif
+
+    let l:adds = []
+    if !empty(l:attrs)
+        call add(l:adds, 'cterm=' . join(l:attrs, ','))
+    endif
+    for l:key in ['fg', 'bg']
+        if l:{l:key} != -1
+            call add(l:adds, 'cterm' . l:key . '=' . l:{l:key})
         endif
     endfor
 
@@ -324,6 +341,96 @@ command! -nargs=* -complete=highlight
 \   Highlight :call s:highlight(<q-args>)
 "}}}
 
+" default highlights {{{--------------------------------------------------------
+function s:hl_dflt_light()
+    Highlight SpecialKey    gui=none        guifg=Blue      guibg=none
+    Highlight NonText       gui=bold        guifg=Blue      guibg=none
+    Highlight Directory     gui=none        guifg=Blue      guibg=none
+    Highlight ErrorMsg      gui=none        guifg=White     guibg=Red
+    Highlight IncSearch     gui=reverse     guifg=none      guibg=none
+    Highlight Search        gui=none        guifg=none      guibg=Yellow
+    Highlight MoreMsg       gui=bold        guifg=SeaGreen  guibg=none
+    Highlight ModeMsg       gui=bold        guifg=none      guibg=none
+    Highlight LineNr        gui=none        guifg=Brown     guibg=none
+    Highlight Question      gui=bold        guifg=SeaGreen  guibg=none
+    Highlight StatusLine    gui=bold,reverse    guifg=none  guibg=none
+    Highlight StatusLineNC  gui=reverse     guifg=none      guibg=none
+    Highlight VertSplit     gui=reverse     guifg=none      guibg=none
+    Highlight Title         gui=bold        guifg=Magenta   guibg=none
+    Highlight Visual        gui=none        guifg=none      guibg=LightGrey
+    Highlight VisualNOS     gui=bold,underline  guifg=none  guibg=none
+    Highlight WarningMsg    gui=none        guifg=Red       guibg=none
+    Highlight WildMenu      gui=none        guifg=Black     guibg=Yellow
+    Highlight Folded        gui=none        guifg=DarkBlue  guibg=LightGrey
+    Highlight FoldColumn    gui=none        guifg=DarkBlue  guibg=Grey
+    Highlight DiffAdd       gui=none        guifg=none      guibg=LightBlue
+    Highlight DiffChange    gui=none        guifg=none      guibg=LightMagenta
+    Highlight DiffDelete    gui=bold        guifg=Blue      guibg=LightCyan
+    Highlight DiffText      gui=bold        guifg=none      guibg=Red
+    Highlight SignColumn    gui=none        guifg=DarkBlue  guibg=Grey
+    Highlight SpellBad      gui=undercurl   guifg=none      guisp=Red
+    Highlight SpellCap      gui=undercurl   guifg=none      guisp=Blue
+    Highlight SpellRare     gui=undercurl   guifg=none      guisp=Magenta
+    Highlight SpellLocal    gui=undercurl   guifg=none      guisp=DarkCyan
+    Highlight Pmenu         gui=none        guifg=none      guibg=LightMagenta
+    Highlight PmenuSel      gui=none        guifg=none      guibg=Grey
+    Highlight PmenuSbar     gui=none        guifg=none      guibg=Grey
+    Highlight PmenuThumb    gui=reverse     guifg=none      guibg=none
+    Highlight TabLine       gui=underline   guifg=none      guibg=LightGrey
+    Highlight TabLineSel    gui=bold        guifg=none      guibg=none
+    Highlight TabLineFill   gui=reverse     guifg=none      guibg=none
+    Highlight CursorColumn  gui=none        guifg=none      guibg=Grey90
+    Highlight CursorLine    gui=none        guifg=none      guibg=Grey90
+    Highlight Cursor        gui=reverse     guifg=none      guibg=none
+    Highlight lCursor       gui=reverse     guifg=none      guibg=none
+    Highlight MatchParen    gui=none        guifg=none      guibg=Cyan
+endfunction
+
+function s:hl_dflt_dark()
+    Highlight SpecialKey    gui=none        guifg=Cyan      guibg=none
+    Highlight NonText       gui=bold        guifg=Blue      guibg=none
+    Highlight Directory     gui=none        guifg=Cyan      guibg=none
+    Highlight ErrorMsg      gui=none        guifg=White     guibg=Red
+    Highlight IncSearch     gui=reverse     guifg=none      guibg=none
+    Highlight Search        gui=none        guifg=Black     guibg=Yellow
+    Highlight MoreMsg       gui=bold        guifg=SeaGreen  guibg=none
+    Highlight ModeMsg       gui=bold        guifg=none      guibg=none
+    Highlight LineNr        gui=none        guifg=Yellow    guibg=none
+    Highlight Question      gui=bold        guifg=Green     guibg=none
+    Highlight StatusLine    gui=bold,reverse    guifg=none  guibg=none
+    Highlight StatusLineNC  gui=reverse     guifg=none      guibg=none
+    Highlight VertSplit     gui=reverse     guifg=none      guibg=none
+    Highlight Title         gui=bold        guifg=Magenta   guibg=none
+    Highlight Visual        gui=none        guifg=none      guibg=DarkGrey
+    Highlight VisualNOS     gui=bold,underline  guifg=none  guibg=none
+    Highlight WarningMsg    gui=none        guifg=Red       guibg=none
+    Highlight WildMenu      gui=none        guifg=Black     guibg=Yellow
+    Highlight Folded        gui=none        guifg=Cyan      guibg=DarkGrey
+    Highlight FoldColumn    gui=none        guifg=Cyan      guibg=Grey
+    Highlight DiffAdd       gui=none        guifg=none      guibg=DarkBlue
+    Highlight DiffChange    gui=none        guifg=none      guibg=DarkMagenta
+    Highlight DiffDelete    gui=bold        guifg=Blue      guibg=DarkCyan
+    Highlight DiffText      gui=bold        guifg=none      guibg=Red
+    Highlight SignColumn    gui=none        guifg=Cyan      guibg=Grey
+    Highlight SpellBad      gui=undercurl   guifg=none      guisp=Red
+    Highlight SpellCap      gui=undercurl   guifg=none      guisp=Blue
+    Highlight SpellRare     gui=undercurl   guifg=none      guisp=Magenta
+    Highlight SpellLocal    gui=undercurl   guifg=none      guisp=Cyan
+    Highlight Pmenu         gui=none        guifg=none      guibg=Magenta
+    Highlight PmenuSel      gui=none        guifg=none      guibg=DarkGrey
+    Highlight PmenuSbar     gui=none        guifg=none      guibg=Grey
+    Highlight PmenuThumb    gui=reverse     guifg=none      guibg=none
+    Highlight TabLine       gui=underline   guifg=none      guibg=DarkGrey
+    Highlight TabLineSel    gui=bold        guifg=none      guibg=none
+    Highlight TabLineFill   gui=reverse     guifg=none      guibg=none
+    Highlight CursorColumn  gui=none        guifg=none      guibg=Grey40
+    Highlight CursorLine    gui=none        guifg=none      guibg=Grey40
+    Highlight Cursor        gui=reverse     guifg=none      guibg=none
+    Highlight lCursor       gui=reverse     guifg=none      guibg=none
+    Highlight MatchParen    gui=none        guifg=none      guibg=DarkCyan
+endfunction
+"}}}
+
 " :ColorScheme {{{-------------------------------------------------------------
 function! ColorSchemeComplete(arg_lead, cmd_line, csr_pos)
     let l:glob = globpath(&runtimepath, 'colors/' . a:arg_lead . '*.vim')
@@ -336,10 +443,6 @@ function! s:run(cmds)
     let @" = substitute(a:cmds, '\n\s*\\', '', 'g')
     let s:last_run = @"
     @"
-endfunction
-
-function! s:cmp(h1, h2)
-    return (a:h1 !~? 'normal') - (a:h2 !~? 'normal')
 endfunction
 
 let s:comment = '" Generated by colorsupport.vim (DO NOT MODIFY THIS LINE)'
@@ -413,11 +516,21 @@ function! s:colorscheme(scheme)
         execute 'delfunction' l:func
     endfor
 
-    call sort(filter(s:last_cmds, 'v:val !~? "hi clear"'), 's:cmp')
+    " put Normal first in order to make 'fg' and 'bg' work for cterm
+    let l:last_cmds = copy(s:last_cmds)
+    call filter(s:last_cmds, 'v:val =~? "normal"')
+    call s:hl_dflt_{&background}()
+    call filter(l:last_cmds, 'v:val !=? "hi clear" && v:val !~? "normal"')
+    call extend(s:last_cmds, l:last_cmds)
 
+    let l:background = &background
     hi clear
     for l:cmd in s:last_cmds
         call s:highlight_do(l:cmd)
+        " Normal can change &background
+        if &background != l:background
+            execute 'set background=' . l:background
+        endif
     endfor
     let s:delay = 0
 endfunction
