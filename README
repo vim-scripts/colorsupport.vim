@@ -5,36 +5,13 @@ colorsupport.vim
 Use colorschemes written for gvim in color terminals.
 Tested with many colorschemes including color sampler pack (vimscript #625)
 
-For a 256-color terminal, see
+To set up a 256-color terminal, see
 
 - http://www.frexx.de/xterm-256-notes/
 - http://www.nabble.com/screen%2C-256color-mode-and-ssh-td15098157.html
 - http://push.cx/2008/256-color-xterms-in-ubuntu
 
 And don't forget to rate ;^)
-
-Comparison
-----------
-At the time that I uploaded this script, I was unaware of other color conversion scripts.
-And I've tried them later.
-
-vimscript #2390. (Thank you marty)
-
-Key difference is that vimscript #2390 practically requires gvim installed.
-And major difficulty (and dirty tricks) of this script was to get gui 
-attributes from colorschemes, which are not obtainable from series of 
-synIDxxx() functions without +gui feature.  
-
-vimscript #1809
-
-vimscript #1809 tries to extract hilight information by string match.
-(I assume that this approach is what most conversion script have took)
-By contrast, colorsupport.vim actually run the original color scheme 
-with highlight command substituted with Highlight command.
-Later works better because many color schemes have highlights
-in conditional block, which should not be extracted.
-
-Furthermore, vimscript #1809 does not support color names.
 
 Simple usage
 ------------
@@ -100,3 +77,27 @@ Commands
   Save last colorscheme loaded by ':ColorScheme' (or, equivalently, browsed by
   ':ColorSchemeViewer') in the first &runtimepath.  If <name> is not given,
   original name of last colorscheme is used.
+
+
+Comparison
+----------
+At the time that I uploaded this script, I was unaware of other color conversion scripts.
+And I've tried them later.
+
+vimscript #2390. (Thank you marty)
+
+Key difference is that vimscript #2390 practically requires gvim installed.
+And major difficulty (and dirty tricks) of this script was to get gui 
+attributes from colorschemes, which are not obtainable from series of 
+synIDxxx() functions without +gui feature.  
+
+vimscript #1809
+
+vimscript #1809 tries to extract hilight information by string match.
+(I assume that this approach is what most conversion script have took)
+By contrast, colorsupport.vim actually run the original color scheme 
+with highlight command substituted with Highlight command.
+Later works better because many color schemes have highlights
+in conditional block, which should not be extracted.
+
+Furthermore, vimscript #1809 does not support color names.

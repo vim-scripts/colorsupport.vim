@@ -1,15 +1,18 @@
 " colorsupport.vim: Use color schemes written for gvim in color terminal
 "
 " Maintainer:       Lee JiHwan <moonz.net@gmail.com>
-" Version:          1.0.2
+" Version:          1.0.3
 " URL:              http://www.vim.org/script.php?script_id=2682
 
-if exists('g:loaded_colorsupport') || &cp
+if exists('g:loaded_colorsupport') || &cp || v:version < 700
     finish
 endif
 let g:loaded_colorsupport = 1
 
-" utility {{{------------------------------------------------------------------
+let s:cpo_save = &cpo
+set cpo-=C
+
+" utility {{{-------------------------------------------------------------------
 " '#rrggbb' -> [0xrr00, 0xgg00, 0xbb00]
 function! s:rgb(rgb)
     return map([1, 3, 5], '("0x" . strpart(a:rgb, v:val, 2)) * 0x100')
@@ -36,9 +39,20 @@ function! s:get_funcs(pat)
     redir END
     return map(split(l:funcs, "\n"), 'v:val[9:strridx(v:val, "(") - 1]')
 endfunction
+
+function! s:remove_comment(line)
+    " TODO: " could be escaped or be inside quoted string
+    if strlen(substitute(a:line, '[^"]', '', 'g')) % 2 != 0
+        let l:pos = strridx(a:line, '"')
+        if l:pos >= 0
+            return a:line[:l:pos - 1]
+        endif
+    endif
+    return a:line
+endfunction
 "}}}
 
-" presets {{{------------------------------------------------------------------
+" presets {{{-------------------------------------------------------------------
 " from gnome-terminal
 let s:palette_dict = {
 \   'tango':
@@ -103,7 +117,7 @@ let s:rgbs_dict = {
 \ }
 "}}}
 
-" defaults {{{-----------------------------------------------------------------
+" defaults {{{------------------------------------------------------------------
 let s:palette_dflt = 'tango'
 
 if &t_Co == 256
@@ -126,7 +140,7 @@ endif
 let s:rgbs_dflt = 'unix'
 "}}}
 
-" customize {{{----------------------------------------------------------------
+" customize {{{-----------------------------------------------------------------
 let s:sfile = expand('<sfile>:t')
 function! s:customize()
     for l:var in ['palette', 'cube', 'grey', 'rgbs']
@@ -141,14 +155,14 @@ function! s:customize()
                 echomsg printf('%s: invalid %s (list expected)',
                 \              s:sfile, l:gvar)
                 echohl None
-                return 1
+                return 0
             endif
-            execute printf('let %s["custom"] = %s', l:dict, l:gvar)
-            execute printf('let %s = "custom"', l:gname)
+            execute 'let' l:dict . '["custom"] =' l:gvar
+            execute 'let' l:gname '= "custom"'
         endif
 
         if !exists(l:gname)
-            execute printf('let %s = %s', l:gname, l:dflt)
+            execute 'let' l:gname '=' l:dflt
         endif
 
         if empty(filter(keys(eval(l:dict)), 'v:val ==# ' . l:gname))
@@ -156,22 +170,23 @@ function! s:customize()
             echomsg printf('%s: unknown %s name "%s"',
             \              s:sfile, l:var, eval(l:gname))
             echohl None
-            return 1
+            return 0
         endif
     endfor
-    return 0
+    return 1
 endfunction
 
 if exists('g:colorsupport_palette') && type(g:colorsupport_palette) == type([])
     call map(g:colorsupport_palette, 's:rgb(v:val)')
 endif
 
-if s:customize()
+if !s:customize()
     finish
 endif
+delfunction s:customize
 "}}}
 
-" set palette {{{--------------------------------------------------------------
+" set palette {{{---------------------------------------------------------------
 function! s:get_palette()
     let l:palette = s:palette_dict[g:colorsupport_palette_name]
     let l:comp_vals = s:cube_dict[g:colorsupport_cube_name]
@@ -191,12 +206,11 @@ function! s:get_palette()
 
     return l:palette
 endfunction
-
-let s:palette = s:get_palette()
 "}}}
 
-" load rgb {{{-----------------------------------------------------------------
+" load rgb {{{------------------------------------------------------------------
 function! s:load_rgb()
+    let l:color_map = {}
     for l:dir in s:rgbs_dict[g:colorsupport_rgbs_name]
         let l:file = l:dir . '/rgb.txt'
         if !filereadable(l:file)
@@ -207,16 +221,14 @@ function! s:load_rgb()
         for l:split in map(l:lines, 'split(v:val)')
             let [l:r, l:g, l:b] = l:split[:2]
             let l:name = s:color_name(join(l:split[3:]))
-            let s:color_map[l:name] = printf('#%02x%02x%02x', l:r, l:g, l:b)
+            let l:color_map[l:name] = printf('#%02x%02x%02x', l:r, l:g, l:b)
         endfor
     endfor
+    return l:color_map
 endfunction
-
-let s:color_map = {}
-call s:load_rgb()
 "}}}
 
-" :Highlight {{{---------------------------------------------------------------
+" :Highlight {{{----------------------------------------------------------------
 function! s:distance(rgb1, rgb2)
     let l:dist = 0.0
     for l:i in range(0, 2)
@@ -226,9 +238,14 @@ function! s:distance(rgb1, rgb2)
 endfunction
 
 let s:rgb_cache = {}
+
 function! s:map_color(color)
     let l:c = a:color
     if l:c[0] != '#'
+        if !exists('s:color_map')
+            let s:color_map = s:load_rgb()
+            delfunction s:load_rgb
+        endif
         if !has_key(s:color_map, s:color_name(l:c))
             return l:c
         endif
@@ -236,6 +253,10 @@ function! s:map_color(color)
     endif
 
     if !has_key(s:rgb_cache, l:c)
+        if !exists('s:palette')
+            let s:palette = s:get_palette()
+            delfunction s:get_palette
+        endif
         let l:distances = map(copy(s:palette), 's:distance(v:val, s:rgb(l:c))')
         let s:rgb_cache[l:c] = index(l:distances, min(l:distances))
     endif
@@ -254,36 +275,15 @@ function! s:map_attrs(attrs)
     return l:new_attrs
 endfunction
 
-function! s:highlight_do(cmd)
-    execute a:cmd
-    return
-
-    " XXX: deprecated (changing colors_name is easier)
-    let l:name = exists('g:colors_name') ? g:colors_name : ''
-    execute a:cmd
-    if l:name != '' && !exists('g:colors_name')
-        " reloaded
-        execute a:cmd
-        let g:colors_name = l:name
-    endif
-endfunction
-
 let s:delay = 0
 let s:last_cmds = []
-function! s:highlight(arg_str)
-    " TODO:
-    " - argument as quoted string
-    " - " could be escaped or be inside quoted string
 
-    " remove comment
-    if strlen(substitute(a:arg_str, '[^"]', '', 'g')) % 2 == 0
-        let l:arg_str = a:arg_str
-    else
-        let l:arg_str = a:arg_str[:strridx(a:arg_str, '"') - 1]
-    endif
+function! s:highlight(arg_str, bang)
+    " TODO: argument as quoted string
+    let l:args = split(s:remove_comment(a:arg_str))
 
     " ignore cterm*
-    let l:args = filter(split(l:arg_str), 'v:val !~? "^cterm.*="')
+    call filter(l:args, 'v:val !~? "^cterm.*="')
     if empty(l:args)
         return
     endif
@@ -323,6 +323,7 @@ function! s:highlight(arg_str)
         endif
     endfor
 
+    " ignore hilight with only 'cterm*=...'
     let l:kw = '^\%(clear\|link\|default\)$'
     if ((l:args[0] !~# l:kw && len(l:args) == 1) ||
     \   (l:args[0] == 'default' && l:args[1] !~# l:kw && len(l:args) == 2)) &&
@@ -330,19 +331,21 @@ function! s:highlight(arg_str)
         return
     endif
 
-    let l:cmd = 'hi ' . join(l:args + l:adds)
+    let l:cmd = 'hi' . a:bang . ' ' . join(l:args + l:adds)
     call add(s:last_cmds, l:cmd)
     if !s:delay
-        call s:highlight_do(l:cmd)
+        execute l:cmd
     endif
 endfunction
 
-command! -nargs=* -complete=highlight
-\   Highlight :call s:highlight(<q-args>)
+" use <q-args> instead of <f-args> to handle comment more easily
+command! -nargs=* -bang -complete=highlight
+\   Highlight :call s:highlight(<q-args>, '<bang>')
 "}}}
 
 " default highlights {{{--------------------------------------------------------
-function s:hl_dflt_light()
+" From hard-coded vim source file
+function! s:hl_dflt_light()
     Highlight SpecialKey    gui=none        guifg=Blue      guibg=none
     Highlight NonText       gui=bold        guifg=Blue      guibg=none
     Highlight Directory     gui=none        guifg=Blue      guibg=none
@@ -386,7 +389,7 @@ function s:hl_dflt_light()
     Highlight MatchParen    gui=none        guifg=none      guibg=Cyan
 endfunction
 
-function s:hl_dflt_dark()
+function! s:hl_dflt_dark()
     Highlight SpecialKey    gui=none        guifg=Cyan      guibg=none
     Highlight NonText       gui=bold        guifg=Blue      guibg=none
     Highlight Directory     gui=none        guifg=Cyan      guibg=none
@@ -431,22 +434,42 @@ function s:hl_dflt_dark()
 endfunction
 "}}}
 
-" :ColorScheme {{{-------------------------------------------------------------
+" :ColorScheme {{{--------------------------------------------------------------
 function! ColorSchemeComplete(arg_lead, cmd_line, csr_pos)
     let l:glob = globpath(&runtimepath, 'colors/' . a:arg_lead . '*.vim')
     return map(split(l:glob, "\n"), 's:scheme(v:val)')
 endfunction
 
-let s:last_run = ''
-function! s:run(cmds)
-    " join continued lines
-    let @" = substitute(a:cmds, '\n\s*\\', '', 'g')
-    let s:last_run = @"
-    @"
+function! s:get_subst()
+    let l:patsub = [
+    \   ['^\s*hi\a*\(!\?\)\s\+', 'Highlight\1 '],
+    \   ['\<exe\a*\s\+\([''"]\)hi\a*\(!\?\)\>', 'exe \1Highlight\2'],
+    \   ['\<has([''"]gui_running[''"])', '!\0'],
+    \   ['&term\>', '"builtin_gui"'],
+    \   ['', '<ESC>'],
+    \   ['\%(g:\)\@<!colors_name\>', 'g:\0'],
+    \   ['^\s*fini\a*', 'return'],
+    \   ['^\s*sy\a*\s\+enable', '"\0'],
+    \   ['<SID>', '\0_'],
+    \   ['\<s:', '\0_'],
+    \   ['^\s*set\s\+\%(background\|bg\)=\(\a*\)', 'let s:background="\1"'],
+    \   ['&\%(background\|bg\)\>', 's:background'],
+    \ ]
+
+    let l:s = 'v:val'
+    for [l:pat, l:sub] in l:patsub
+        let l:pat = escape(l:pat, '\"')
+        let l:sub = escape(l:sub, '\"')
+        let l:s = printf('substitute(%s, "%s", "%s", "g")', l:s, l:pat, l:sub)
+    endfor
+
+    return l:s
 endfunction
 
 let s:comment = '" Generated by colorsupport.vim (DO NOT MODIFY THIS LINE)'
 let s:colors_name = ''
+let s:last_run = ''
+
 function! s:colorscheme(scheme)
     let l:file = ''
     if a:scheme =~ '/'
@@ -471,6 +494,7 @@ function! s:colorscheme(scheme)
         return
     endif
 
+    unlet! g:colors_name
     hi clear Normal
     set background&
 
@@ -480,70 +504,69 @@ function! s:colorscheme(scheme)
         return
     endif
 
-    let l:patsub = [
-    \   ['^\s*\(exe\a*\s\+"\)\?hi\a*\s', '\1Highlight '],
-    \   ["colors_name\\s*=\\s*['\"]", '\0.'],
-    \   ["\\<has(['\"]gui_running['\"])", '!\0'],
-    \   ['&term\>', '"builtin_gui"'],
-    \   ['', '<ESC>'],
-    \   ['\%(g:\)\@<!colors_name\>', 'g:\0'],
-    \   ['^\s*fini\a*', 'return'],
-    \   ['^\s*sy\a*\s\+enable', '"\0'],
-    \   ['<SID>', '\0_'],
-    \   ['\<s:', '\0_'],
-    \ ]
-
-    let l:s = 'v:val'
-    for [l:pat, l:sub] in l:patsub
-        let l:pat = escape(l:pat, '\"')
-        let l:sub = escape(l:sub, '\"')
-        let l:s = printf('substitute(%s, "%s", "%s", "g")', l:s, l:pat, l:sub)
-    endfor
-
+    " remove comments
     call filter(l:lines, 'v:val !~ "^\\s*\\\""')
-    call map(l:lines, l:s)
+    if !exists('s:subst')
+        let s:subst = s:get_subst()
+        delfunction s:get_subst
+    endif
+    call map(l:lines, s:subst)
 
     let s:delay = 1
     let s:last_cmds = []
-    call s:run(join(l:lines, "\n"))
-    let s:colors_name = g:colors_name[1:]
+    let s:background = &background
 
+    " join continued lines
+    let s:last_run = substitute(join(l:lines, "\n"), '\n\s*\\', '', 'g')
+    " run using register @"
+    let @" = s:last_run
+    @"
+
+    let s:colors_name = g:colors_name
+    unlet g:colors_name
+
+    " clean up variables
     for l:var in filter(keys(s:), 'v:val =~ "^_"')
         unlet s:[l:var]
     endfor
+
+    " clean up functions
     for l:func in filter(s:get_funcs(s:sid . '__'),
     \                    'v:val =~ "^<SNR>' . s:sid . '__"')
         execute 'delfunction' l:func
     endfor
 
-    " put Normal first in order to make 'fg' and 'bg' work for cterm
     let l:last_cmds = copy(s:last_cmds)
+    " put Normal first in order to make 'fg' and 'bg' work for cterm
     call filter(s:last_cmds, 'v:val =~? "normal"')
+    " setting cterm for Normal can change &background
+    call add(s:last_cmds, 'set background=' . s:background)
+    " note that s:delay is still on and Hilight will add to s:last_cmds
     call s:hl_dflt_{&background}()
     call filter(l:last_cmds, 'v:val !=? "hi clear" && v:val !~? "normal"')
     call extend(s:last_cmds, l:last_cmds)
 
-    let l:background = &background
     hi clear
     for l:cmd in s:last_cmds
-        call s:highlight_do(l:cmd)
-        " Normal can change &background
-        if &background != l:background
-            execute 'set background=' . l:background
-        endif
+        execute l:cmd
     endfor
+
     let s:delay = 0
 endfunction
 
-command! -nargs=1 -complete=customlist,ColorSchemeComplete
-\   ColorScheme :call s:colorscheme(<f-args>)
-
-if exists('g:colors_name')
-    execute 'ColorScheme' g:colors_name
+if exists('gui_running')
+    command! -nargs=1 -complete=customlist,ColorSchemeComplete
+    \   ColorScheme colorscheme <args>
+else
+    command! -nargs=1 -complete=customlist,ColorSchemeComplete
+    \   ColorScheme :call s:colorscheme(<f-args>)
+    if exists('g:colors_name')
+        execute 'ColorScheme' g:colors_name
+    endif
 endif
 "}}}
 
-" :ColorSchemeBrowse {{{-------------------------------------------------------
+" :ColorSchemeBrowse {{{--------------------------------------------------------
 function! s:colorscheme_browse(...)
     execute 'silent bot 10new ColorSchemeBrowse'
     setlocal bufhidden=wipe buftype=nofile nobuflisted
@@ -565,7 +588,7 @@ command! -nargs=? -complete=dir
 \   ColorSchemeBrowse :call s:colorscheme_browse(<f-args>)
 "}}}
 
-" :ColorSchemeSave {{{---------------------------------------------------------
+" :ColorSchemeSave {{{----------------------------------------------------------
 function! s:colorscheme_save(...)
     if s:colors_name == ''
         echohl ErrorMsg
@@ -575,12 +598,18 @@ function! s:colorscheme_save(...)
     endif
 
     let l:name = a:0 == 0 ? s:colors_name : a:1
-    let l:file = split(&runtimepath, '\s*,\s*')[0] . '/colors/'
-    let l:file .= l:name . '.vim'
-
-    if filereadable(l:file)
+    let l:path = split(&runtimepath, '\s*,\s*')[0] . '/colors'
+    if !filewritable(l:path)
         echohl ErrorMsg
-        echomsg 'ColorScheme already exists "' . l:file . '"'
+        echomsg 'directory not writable "' . l:path . '"'
+        echohl None
+        return
+    endif
+
+    let l:path .= '/' . l:name . '.vim'
+    if filereadable(l:path)
+        echohl ErrorMsg
+        echomsg 'file already exists "' . l:path . '"'
         echohl None
         return
     endif
@@ -588,21 +617,24 @@ function! s:colorscheme_save(...)
     let l:lines = [
     \   s:comment,
     \   'hi clear',
-    \   'set background=' . &background,
     \   'if exists("syntax_on")',
     \   '  syntax reset',
     \   'endif',
-    \   'let g:colors_name = "' . l:name . '"'
     \ ] + s:last_cmds
 
-    call writefile(l:lines, l:file)
-    echo 'ColorScheme "' . l:file . '" saved'
+    " setting background will remove g:colors_name if it's sourced by
+    " :ColorScheme (but not by :colorscheme)
+    call insert(l:lines, 'let g:colors_name = "' . l:name . '"',
+    \           match(l:lines, '^set background=') + 1)
+
+    call writefile(l:lines, l:path)
+    echo 'ColorScheme "' . l:path . '" saved'
 endfunction
 
 command! -nargs=? ColorSchemeSave :call s:colorscheme_save(<f-args>)
 "}}}
 
-" for debugging and testing {{{------------------------------------------------
+" for debugging and testing {{{-------------------------------------------------
 command! -nargs=0 ColorSchemeDebug :echo s:last_run
 command! -nargs=0 ColorSchemePrint :echo join(s:last_cmds, "\n")
 
@@ -610,7 +642,14 @@ function! ColorSchemeTest()
     " setup
     let l:more = &more
     set nomore
-    let l:name = exists('g:colors_name') ? g:colors_name : ''
+
+    if exists('g:colors_name')
+        let l:teardown_cmd = 'colorscheme ' . g:colors_name
+    elseif s:colors_name != ''
+        let l:teardown_cmd = 'ColorScheme ' . s:colors_name
+    else
+        let l:teardown_cmd = 'hi clear'
+    endif
 
     " test
     let l:glob = globpath(&runtimepath, 'colors/*.vim')
@@ -620,20 +659,14 @@ function! ColorSchemeTest()
     endfor
 
     " teardown
-    if l:name != ''
-        if l:name[0] == '.'
-            let l:name = l:name[1:]
-            execute 'ColorScheme' l:name
-        else
-            execute 'colorscheme' l:name
-        endif
-    else
-        hi clear
-    endif
+    execute l:teardown_cmd
     if l:more == 'more'
         set more
     endif
 endfunction
 "}}}
+
+let &cpo = s:cpo_save
+unlet s:cpo_save
 
 " vim: foldmethod=marker
