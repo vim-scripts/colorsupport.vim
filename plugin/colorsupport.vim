@@ -1,7 +1,7 @@
 " colorsupport.vim: Use color schemes written for gvim in color terminal
 "
 " Maintainer:       Lee JiHwan <moonz.net@gmail.com>
-" Version:          1.0.4
+" Version:          1.0.5
 " URL:              http://www.vim.org/script.php?script_id=2682
 
 if exists('g:loaded_colorsupport') || &cp || v:version < 700
@@ -507,9 +507,6 @@ function! s:colorscheme(reload_if_skip, scheme)
     endif
 
     unlet! g:colors_name
-    hi clear Normal
-    set background&
-
     if l:skip
         execute 'source' l:file
         return
@@ -533,8 +530,12 @@ function! s:colorscheme(reload_if_skip, scheme)
     let @" = s:last_run
     @"
 
-    let s:colors_name = g:colors_name
-    unlet g:colors_name
+    if exists('g:colors_name')
+        let s:colors_name = g:colors_name
+        unlet g:colors_name
+    else
+        let s:colors_name = l:scheme
+    endif
 
     " clean up variables
     for l:var in filter(keys(s:), 'v:val =~ "^_"')
